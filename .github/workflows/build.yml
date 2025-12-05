@@ -12,53 +12,31 @@ permissions:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     
     steps:
       - name: Clean workspace
-        shell: pwsh
         run: |
-          if (Test-Path "${{ github.workspace }}\*") {
-            Remove-Item -Path "${{ github.workspace }}\*" -Recurse -Force
-          }
+          if [ -n "$(ls -A ${{ github.workspace }})" ]; then
+            rm -rf ${{ github.workspace }}/*
+          fi
 
       - name: Clone from GitLab
-        shell: pwsh
         run: |
           git clone --depth 1 --branch master --single-branch ${{ secrets.MAIN_SERVER_REPO }} .
 
-      - name: Setup PuTTY tools
-        shell: pwsh
+      - name: Setup sshpass
         run: |
-          # Download PuTTY tools directly (portable version)
-          $puttyDir = "$env:TEMP\putty"
-          New-Item -ItemType Directory -Force -Path $puttyDir | Out-Null
-          
-          # Download plink and pscp
-          $plinkUrl = "https://the.earth.li/~sgtatham/putty/latest/w64/plink.exe"
-          $pscpUrl = "https://the.earth.li/~sgtatham/putty/latest/w64/pscp.exe"
-          
-          Write-Host "Downloading plink.exe..."
-          Invoke-WebRequest -Uri $plinkUrl -OutFile "$puttyDir\plink.exe" -UseBasicParsing
-          Write-Host "Downloading pscp.exe..."
-          Invoke-WebRequest -Uri $pscpUrl -OutFile "$puttyDir\pscp.exe" -UseBasicParsing
-          
-          # Add to PATH for this session
-          $env:Path = "$puttyDir;$env:Path"
-          
-          # Verify downloads
-          Write-Host "plink exists: $(Test-Path "$puttyDir\plink.exe")"
-          Write-Host "pscp exists: $(Test-Path "$puttyDir\pscp.exe")"
-          
-          # Save path for subsequent steps
-          echo "PUTTY_DIR=$puttyDir" >> $env:GITHUB_ENV
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+          mkdir -p ~/.ssh
+          ssh-keyscan -p ${{ secrets.MAIN_SERVER_PORT }} ${{ secrets.MAIN_SERVER_HOST }} >> ~/.ssh/known_hosts
 
       - name: Backup existing Work directory on server
-        shell: pwsh
         run: |
-          $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-          $backupDir = "/storage/sites/G2/Page/Work_backup_$timestamp"
-          echo y | & "$env:PUTTY_DIR\plink.exe" -ssh -P ${{ secrets.MAIN_SERVER_PORT }} -pw "${{ secrets.SSH_PASSWORD }}" root@${{ secrets.MAIN_SERVER_HOST }} "if [ -d '/storage/sites/G2/Page/Work' ]; then cp -r '/storage/sites/G2/Page/Work' '$backupDir' && echo 'Backup created: $backupDir'; else echo 'No existing Work directory to backup'; fi"
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          BACKUP_DIR="/storage/sites/G2/Page/Work_backup_$TIMESTAMP"
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "if [ -d '/storage/sites/G2/Page/Work' ]; then cp -r '/storage/sites/G2/Page/Work' '$BACKUP_DIR' && echo 'Backup created: $BACKUP_DIR'; else echo 'No existing Work directory to backup'; fi"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -66,31 +44,25 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        shell: pwsh
         run: bun install
 
       - name: Build project
-        shell: pwsh
         run: bun run build
 
       - name: Create deployment package
-        shell: pwsh
         run: |
           tar -czf Work.tar.gz Run/Work/
-          $fileInfo = Get-Item Work.tar.gz
-          Write-Host "Package created: $($fileInfo.Name) ($([math]::Round($fileInfo.Length / 1MB, 2)) MB)"
+          FILE_SIZE=$(du -h Work.tar.gz | cut -f1)
+          echo "Package created: Work.tar.gz ($FILE_SIZE)"
 
       - name: Upload package to server
-        shell: pwsh
         run: |
-          echo y | & "$env:PUTTY_DIR\pscp.exe" -P ${{ secrets.MAIN_SERVER_PORT }} -pw "${{ secrets.SSH_PASSWORD }}" Work.tar.gz root@${{ secrets.MAIN_SERVER_HOST }}:/storage/sites/G2/Page/
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P ${{ secrets.MAIN_SERVER_PORT }} Work.tar.gz root@${{ secrets.MAIN_SERVER_HOST }}:/storage/sites/G2/Page/
 
       - name: Extract package on server
-        shell: pwsh
         run: |
-          echo y | & "$env:PUTTY_DIR\plink.exe" -ssh -P ${{ secrets.MAIN_SERVER_PORT }} -pw "${{ secrets.SSH_PASSWORD }}" root@${{ secrets.MAIN_SERVER_HOST }} "cd /storage/sites/G2/Page && tar -xzf Work.tar.gz --strip-components=1 && rm -f Work.tar.gz && echo 'Deployment completed successfully'"
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "cd /storage/sites/G2/Page && tar -xzf Work.tar.gz --strip-components=1 && rm -f Work.tar.gz && echo 'Deployment completed successfully'"
 
       - name: Verify deployment
-        shell: pwsh
         run: |
-          echo y | & "$env:PUTTY_DIR\plink.exe" -ssh -P ${{ secrets.MAIN_SERVER_PORT }} -pw "${{ secrets.SSH_PASSWORD }}" root@${{ secrets.MAIN_SERVER_HOST }} "if [ -d '/storage/sites/G2/Page/Work' ]; then echo 'Deployment verified: Work directory exists'; ls -la '/storage/sites/G2/Page/Work' | head -10; else echo 'ERROR: Work directory not found after deployment'; exit 1; fi"
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "if [ -d '/storage/sites/G2/Page/Work' ]; then echo 'Deployment verified: Work directory exists'; ls -la '/storage/sites/G2/Page/Work' | head -10; else echo 'ERROR: Work directory not found after deployment'; exit 1; fi"
