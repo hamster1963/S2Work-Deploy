@@ -61,7 +61,7 @@ jobs:
 
       - name: Extract package on server
         run: |
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "cd /storage/sites/G2/Page && tar -xzf Work.tar.gz --strip-components=1 && rm -f Work.tar.gz && echo 'Deployment completed successfully'"
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "cd /storage/sites/G2/Page && rm -rf Work && tar -xzf Work.tar.gz --strip-components=1 && rm -f Work.tar.gz && echo 'Deployment completed successfully'"
 
       - name: Verify deployment
         run: |
