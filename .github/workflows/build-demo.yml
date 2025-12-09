@@ -37,8 +37,8 @@ jobs:
       - name: Backup existing Work directory on server
         run: |
           TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-          BACKUP_DIR="/storage/sites/G2/Page/Work_backup_$TIMESTAMP"
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "sshpass -p '${{ secrets.DEMO_SSH_PASSWORD }}' ssh -p ${{ secrets.DEMO_SERVER_PORT }} root@${{ secrets.DEMO_SERVER_HOST }} \"if [ -d '/storage/sites/G2/Page/Work' ]; then cp -r '/storage/sites/G2/Page/Work' '$BACKUP_DIR' && echo 'Backup created: $BACKUP_DIR'; else echo 'No existing Work directory to backup'; fi\""
+          BACKUP_DIR="/storage/sites/G2/Page/G2Demo/Work_backup_$TIMESTAMP"
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "sshpass -p '${{ secrets.DEMO_SSH_PASSWORD }}' ssh -p ${{ secrets.DEMO_SERVER_PORT }} root@${{ secrets.DEMO_SERVER_HOST }} \"if [ -d '/storage/sites/G2/Page/G2Demo/Work' ]; then cp -r '/storage/sites/G2/Page/G2Demo/Work' '$BACKUP_DIR' && echo 'Backup created: $BACKUP_DIR'; else echo 'No existing Work directory to backup'; fi\""
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -62,12 +62,12 @@ jobs:
           # First upload to main server
           sshpass -p "${{ secrets.SSH_PASSWORD }}" scp -P ${{ secrets.MAIN_SERVER_PORT }} Work.tar.gz root@${{ secrets.MAIN_SERVER_HOST }}:/tmp/
           # Then transfer from main server to demo server
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "sshpass -p '${{ secrets.DEMO_SSH_PASSWORD }}' scp -P ${{ secrets.DEMO_SERVER_PORT }} /tmp/Work.tar.gz root@${{ secrets.DEMO_SERVER_HOST }}:/storage/sites/G2/Page/ && rm -f /tmp/Work.tar.gz"
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "sshpass -p '${{ secrets.DEMO_SSH_PASSWORD }}' scp -P ${{ secrets.DEMO_SERVER_PORT }} /tmp/Work.tar.gz root@${{ secrets.DEMO_SERVER_HOST }}:/storage/sites/G2/Page/G2Demo && rm -f /tmp/Work.tar.gz"
 
       - name: Extract package on server
         run: |
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "sshpass -p '${{ secrets.DEMO_SSH_PASSWORD }}' ssh -p ${{ secrets.DEMO_SERVER_PORT }} root@${{ secrets.DEMO_SERVER_HOST }} \"cd /storage/sites/G2/Page && rm -rf Work && tar -xzf Work.tar.gz --strip-components=1 && rm -f Work.tar.gz && echo 'Deployment completed successfully'\""
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "sshpass -p '${{ secrets.DEMO_SSH_PASSWORD }}' ssh -p ${{ secrets.DEMO_SERVER_PORT }} root@${{ secrets.DEMO_SERVER_HOST }} \"cd /storage/sites/G2/Page/G2Demo && rm -rf Work && tar -xzf Work.tar.gz --strip-components=1 && rm -f Work.tar.gz && echo 'Deployment completed successfully'\""
       
       - name: Verify deployment
         run: |
-          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "sshpass -p '${{ secrets.DEMO_SSH_PASSWORD }}' ssh -p ${{ secrets.DEMO_SERVER_PORT }} root@${{ secrets.DEMO_SERVER_HOST }} \"if [ -d '/storage/sites/G2/Page/Work' ]; then echo 'Deployment verified: Work directory exists'; ls -la '/storage/sites/G2/Page/Work' | head -10; else echo 'ERROR: Work directory not found after deployment'; exit 1; fi\""
+          sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "sshpass -p '${{ secrets.DEMO_SSH_PASSWORD }}' ssh -p ${{ secrets.DEMO_SERVER_PORT }} root@${{ secrets.DEMO_SERVER_HOST }} \"if [ -d '/storage/sites/G2/Page/G2Demo/Work' ]; then echo 'Deployment verified: Work directory exists'; ls -la '/storage/sites/G2/Page/G2Demo/Work' | head -10; else echo 'ERROR: Work directory not found after deployment'; exit 1; fi\""
