@@ -57,6 +57,13 @@ jobs:
           FILE_SIZE=$(du -h Work.tar.gz | cut -f1)
           echo "Package created: Work.tar.gz ($FILE_SIZE)"
 
+      - name: Upload Work.tar.gz as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Work.tar.gz
+          path: Work.tar.gz
+          retention-days: 7
+
       - name: Upload package to server via jump host
         run: |
           # First upload to main server
