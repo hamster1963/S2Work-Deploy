@@ -1,0 +1,75 @@
+name: Build and Package to Work Server
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  packages: write
+
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Clean workspace
+        run: |
+          if [ -n "$(ls -A ${{ github.workspace }})" ]; then
+            rm -rf ${{ github.workspace }}/*
+          fi
+
+      - name: Clone from GitLab
+        run: |
+          git clone --depth 1 --branch master --single-branch ${{ secrets.MAIN_SERVER_REPO }} .
+
+      - name: Setup sshpass
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y sshpass
+          mkdir -p ~/.ssh
+          ssh-keyscan -p ${{ secrets.WORK_SERVER_PORT }} ${{ secrets.WORK_SERVER_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Backup existing Work directory on server
+        run: |
+          TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+          BACKUP_DIR="/storage/sites/G2/Page/Work_backup_$TIMESTAMP"
+          sshpass -p "${{ secrets.WORK_SSH_PASSWORD }}" ssh -p ${{ secrets.WORK_SERVER_PORT }} root@${{ secrets.WORK_SERVER_HOST }} "if [ -d '/storage/sites/G2/Page/Work' ]; then cp -r '/storage/sites/G2/Page/Work' '$BACKUP_DIR' && echo 'Backup created: $BACKUP_DIR'; else echo 'No existing Work directory to backup'; fi"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build project
+        run: bun run build
+
+      - name: Create deployment package
+        run: |
+          tar -czf Work.tar.gz Run/Work/
+          FILE_SIZE=$(du -h Work.tar.gz | cut -f1)
+          echo "Package created: Work.tar.gz ($FILE_SIZE)"
+
+      - name: Upload Work.tar.gz as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Work.tar.gz
+          path: Work.tar.gz
+          retention-days: 7
+
+      - name: Upload package to server
+        run: |
+          sshpass -p "${{ secrets.WORK_SSH_PASSWORD }}" scp -P ${{ secrets.WORK_SERVER_PORT }} Work.tar.gz root@${{ secrets.WORK_SERVER_HOST }}:/storage/sites/G2/Page/
+
+      - name: Extract package on server
+        run: |
+          sshpass -p "${{ secrets.WORK_SSH_PASSWORD }}" ssh -p ${{ secrets.WORK_SERVER_PORT }} root@${{ secrets.WORK_SERVER_HOST }} "cd /storage/sites/G2/Page && rm -rf Work && tar -xzf Work.tar.gz --strip-components=1 && rm -f Work.tar.gz && echo 'Deployment completed successfully'"
+
+      - name: Verify deployment
+        run: |
+          sshpass -p "${{ secrets.WORK_SSH_PASSWORD }}" ssh -p ${{ secrets.WORK_SERVER_PORT }} root@${{ secrets.WORK_SERVER_HOST }} "if [ -d '/storage/sites/G2/Page/Work' ]; then echo 'Deployment verified: Work directory exists'; ls -la '/storage/sites/G2/Page/Work' | head -10; else echo 'ERROR: Work directory not found after deployment'; exit 1; fi"
