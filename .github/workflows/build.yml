@@ -38,16 +38,34 @@ jobs:
           BACKUP_DIR="/storage/sites/G2/Page/Work_backup_$TIMESTAMP"
           sshpass -p "${{ secrets.SSH_PASSWORD }}" ssh -p ${{ secrets.MAIN_SERVER_PORT }} root@${{ secrets.MAIN_SERVER_HOST }} "if [ -d '/storage/sites/G2/Page/Work' ]; then cp -r '/storage/sites/G2/Page/Work' '$BACKUP_DIR' && echo 'Backup created: $BACKUP_DIR'; else echo 'No existing Work directory to backup'; fi"
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
         with:
-          bun-version: latest
+          node-version: '20'
+
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('package.json') }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-
 
       - name: Install dependencies
-        run: bun install
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        run: npm install --legacy-peer-deps
+
+      - name: Cache webpack filesystem cache
+        uses: actions/cache@v4
+        with:
+          path: webpack-cache
+          key: webpack-cache-${{ runner.os }}-${{ hashFiles('webpack.*.config.js', 'package.json') }}
+          restore-keys: |
+            webpack-cache-${{ runner.os }}-
 
       - name: Build project
-        run: bun run build
+        run: npm run build
 
       - name: Create deployment package
         run: |
