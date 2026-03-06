@@ -15,15 +15,27 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Clean workspace
-        run: |
-          if [ -n "$(ls -A ${{ github.workspace }})" ]; then
-            rm -rf ${{ github.workspace }}/*
-          fi
+      - name: Cache GitLab source
+        id: cache-gitlab-source
+        uses: actions/cache@v4
+        with:
+          path: source
+          key: gitlab-source-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            gitlab-source-${{ runner.os }}-
 
-      - name: Clone from GitLab
+      - name: Clone or pull from GitLab
         run: |
-          git clone --depth 1 --branch master --single-branch ${{ secrets.MAIN_SERVER_REPO }} .
+          if [ -d "source/.git" ]; then
+            echo "Cache found, pulling latest changes..."
+            cd source
+            git remote set-url origin ${{ secrets.MAIN_SERVER_REPO }}
+            git fetch --depth 1 origin master
+            git reset --hard origin/master
+          else
+            echo "No cache found, cloning repository..."
+            git clone --depth 1 --branch master --single-branch ${{ secrets.MAIN_SERVER_REPO }} source
+          fi
 
       - name: Setup sshpass
         run: |
@@ -47,27 +59,30 @@ jobs:
         id: cache-node-modules
         uses: actions/cache@v4
         with:
-          path: node_modules
-          key: node-modules-${{ runner.os }}-${{ hashFiles('package.json') }}
+          path: source/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('source/package.json') }}
           restore-keys: |
             node-modules-${{ runner.os }}-
 
       - name: Install dependencies
         if: steps.cache-node-modules.outputs.cache-hit != 'true'
+        working-directory: ./source
         run: npm install --legacy-peer-deps
 
       - name: Cache webpack filesystem cache
         uses: actions/cache@v4
         with:
-          path: webpack-cache
-          key: webpack-cache-${{ runner.os }}-${{ hashFiles('webpack.*.config.js', 'package.json') }}
+          path: source/webpack-cache
+          key: webpack-cache-${{ runner.os }}-${{ hashFiles('source/webpack.*.config.js', 'source/package.json') }}
           restore-keys: |
             webpack-cache-${{ runner.os }}-
 
       - name: Build project
+        working-directory: ./source
         run: npm run build
 
       - name: Create deployment package
+        working-directory: ./source
         run: |
           tar -czf Work.tar.gz Run/Work/
           FILE_SIZE=$(du -h Work.tar.gz | cut -f1)
@@ -77,12 +92,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Work.tar.gz
-          path: Work.tar.gz
+          path: source/Work.tar.gz
           retention-days: 7
 
       - name: Upload package to server
         run: |
-          sshpass -p "${{ secrets.WORK_SSH_PASSWORD }}" scp -P ${{ secrets.WORK_SERVER_PORT }} Work.tar.gz root@${{ secrets.WORK_SERVER_HOST }}:/storage/sites/G2/Page/
+          sshpass -p "${{ secrets.WORK_SSH_PASSWORD }}" scp -P ${{ secrets.WORK_SERVER_PORT }} source/Work.tar.gz root@${{ secrets.WORK_SERVER_HOST }}:/storage/sites/G2/Page/
 
       - name: Extract package on server
         run: |
